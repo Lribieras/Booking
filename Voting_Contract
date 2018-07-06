@@ -1,0 +1,230 @@
+pragma solidity ^0.4.16;
+
+// Code adapted from the DAO blueprint here:
+// https://www.ethereum.org/dao
+
+// Utility contract for ownership functionality.
+contract owned {
+    address public owner;
+
+    constructor() public {
+        owner = msg.sender;
+    }
+
+    modifier onlyOwner {
+        require(msg.sender == owner);
+        _;
+    }
+
+    function transferOwnership(address newOwner) onlyOwner public {
+        owner = newOwner;
+    }
+}
+
+contract Voting is owned {
+
+    // Contract Variables
+    uint public debatingPeriodInDays; // Min length before proposal can pass
+    Proposal[] public proposals; // List of proposals
+    uint public numProposals; // Convenience Counter
+
+    mapping (address => uint) public votersId; // map addresses to ids which index storage array
+    Voter[] public voters; // storage for voters
+
+    struct Proposal {
+        string description;
+        uint minExecutionDate;
+
+        bool executed; // execution state
+        bool proposalPassed; // decision state
+
+        int numberOfVotes; // total votes
+        int currentResult; // total in agreement
+
+        Vote[] votes; // vote record
+        mapping (address => bool) voted; // voted voter tracker
+    }
+
+    struct Voter {
+        address voterAddress;
+        int tokenCount;
+    }
+
+    struct Vote {
+        bool inSupport;
+        address voter;
+    }
+
+    // Modifier that allows only tokenholders to vote and create new proposals
+    modifier onlyVoters {
+        // voters[voterId[msg.sender]].voterAddress != 0
+        // index = voterId[msg.sender] <- index of the voter in voters
+        // voters[index].voterAddress != 0
+
+        require(voters[votersId[msg.sender]].voterAddress != 0);
+        _;
+    }
+
+    /**
+     * Constructor function
+     */
+    constructor (
+        uint daysForDebate
+    ) public {
+        changeVotingRules(daysForDebate);
+    }
+
+    /**
+     * Add student
+     *
+     * Make `targetStudent` a student named `studentName`
+     */
+
+    function addVoter(address targetVoter, int numTokens) internal {
+        // Check existence of voter.
+        uint id = votersId[targetVoter];
+        if (id == 0) {
+            // Add student to ID list.
+            // 4 people 0 1 2 3
+            // adding person 5, so his id is 0
+            // studentId[targetStudent] = 4
+            // id = 4 = students.length
+            // students.length = 5 = students.length ++
+            votersId[targetVoter] = voters.length;
+            id = voters.length++;
+        }
+
+        // Create and update voter struct
+        Voter storage v = voters[id];
+        v.voterAddress = targetVoter;
+        v.tokenCount = numTokens;
+    }
+
+    /**
+     * Remove voter
+     */
+    function removeVoter(address targetVoter) internal {
+
+        // Rewrite the voter storage to move the 'gap' to the end.
+        for (uint i = votersId[targetVoter]; i<voters.length-1; i++){
+            voters[i] = voters[i+1];
+        }
+
+        // Delete the last voter.
+        delete voters[voters.length-1];
+        voters.length--;
+    }
+
+    /**
+     * Change voting rules
+     *
+     * Make so that proposals need to be discussed for at least `minutesForDebate/60` hours,
+     * have at least minimumVotersForAward votes for a proposal to be executed.
+     *
+     */
+    function changeVotingRules(
+        uint daysForDebate
+    ) onlyOwner public {
+        debatingPeriodInDays = daysForDebate;
+    }
+
+    /**
+     * Add Proposal
+     *
+     *
+     */
+    function newProposal(
+        string reason
+    )
+        onlyOwner public
+        returns (uint proposalID)
+    {
+        // proposals.length = 5
+        // length 5: 0 1 2 3 4
+        //
+        // proposalID = 5
+        // length 6: 0 1 2 3 4 5
+        // proposals.length = 6
+
+        proposalID = proposals.length++;
+        Proposal storage p = proposals[proposalID];
+        p.description = reason;
+        p.minExecutionDate = now + debatingPeriodInDays * 1 days;
+        p.executed = false;
+        p.proposalPassed = false;
+        p.numberOfVotes = 0;
+
+        numProposals = proposalID+1;
+
+        return proposalID;
+    }
+
+
+
+    /**
+     * Log a vote for a proposal
+     *
+     * Vote `supportsProposal? in support of : against` proposal #`proposalNumber`
+     *
+     */
+    function vote(
+        uint proposalNumber,
+        bool supportsProposal
+    )
+        onlyVoters public
+        returns (int voteID)
+    {
+        Proposal storage p = proposals[proposalNumber]; // Get the proposal
+        require(!p.voted[msg.sender]);                  // If has already voted, cancel
+        p.voted[msg.sender] = true;                     // Set this voter as having voted
+        // p.numberOfVotes++ ========= p.numberOfVotes = p.numberOfVotes + 1;
+        uint index = votersId[msg.sender];
+        Voter storage thisVoter = voters[index];
+        p.numberOfVotes = p.numberOfVotes + thisVoter.tokenCount;
+
+        //p.numberOfVotes++;                              // Increase the number of votes
+        if (supportsProposal) {                         // If they support the proposal
+            p.currentResult += thisVoter.tokenCount;                          // Increase score
+        } else {                                        // If they don't
+            p.currentResult -= thisVoter.tokenCount;                          // Decrease the score
+        }
+
+        return p.numberOfVotes;
+    }
+
+    /**
+    Finish vote
+
+     Count the votes proposal #`proposalNumber` and execute it if approved
+     */
+    function executeProposal(uint proposalNumber) public {
+        Proposal storage p = proposals[proposalNumber];
+
+        require(now > p.minExecutionDate                                            // If it is past the voting deadline
+            && !p.executed                                                         // and it has not already been executed
+                ); // and a minimum quorum has been reached...
+
+        // ...then check result (0 means >=50% voted yes (with no additional compute :) )
+        if (p.currentResult >= 0) {
+            // Proposal passed; award the badge
+
+            p.proposalPassed = true;
+            p.executed = true; // Avoid recursive calling by setting the state first.
+
+        } else {
+            // Proposal failed
+            p.proposalPassed = false;
+        }
+
+    }
+
+
+    /**
+     * Kill the contract and 'erase' content from chain state.
+     */
+    function kill()
+      onlyOwner public
+    {
+      selfdestruct(owner);
+    }
+}
