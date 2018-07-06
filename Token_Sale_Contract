@@ -1,0 +1,133 @@
+pragma solidity ^0.4.18;
+
+contract ownable{
+    address public owner;
+
+
+    constructor (){
+        owner = msg.sender;
+    }
+
+    modifier onlyOwner() {
+        require (owner == msg.sender);
+        _;
+    }
+
+    modifier transferOwner(address owner, address newOwner){
+        require (owner == msg.sender);
+        _;
+        owner = newOwner;
+    }
+}
+
+contract Token is ownable{
+    string public tokenName = "Company i_X";
+    string public tradingSymbol = "i_X";
+    uint8 public transferDecimals = 0;
+    uint256 public totalSupply;
+    address public mintController;
+    mapping(address => uint256) public balanceOf;
+
+    event recordMinted (address inputAddress, uint256 inputAmount);
+    event recordTransfer (address mintController, address receiver, uint256 newAmount);
+
+    modifier onlyMintController (){
+        require (mintController == msg.sender);
+        _;
+    }
+
+    constructor (uint256 initialSupply){
+        balanceOf[mintController] = totalSupply;
+        totalSupply = initialSupply;
+        recordMinted(msg.sender, initialSupply);
+    }
+
+    function mint(address inputAddress, uint inputAmount) onlyMintController public returns (bool success){
+        balanceOf[inputAddress] += inputAmount;
+        totalSupply += inputAmount;
+        recordMinted(inputAddress, inputAmount);
+        return true;
+    }
+
+    function changeMint (address inputOwner) onlyOwner public{
+        mintController = inputOwner;
+    }
+
+    function transfer (address receiver, uint newAmount) returns (bool success)  {
+        require (balanceOf[mintController] >= newAmount);
+        balanceOf[mintController] -= newAmount;
+        balanceOf[receiver] += newAmount;
+        recordTransfer(mintController, receiver, newAmount);
+        return true;
+    }
+
+    function () {
+        throw;
+    }
+
+}
+contract Sale is ownable{
+
+    address public beneficiary;
+    uint public fundingGoal;
+    uint public deadline;
+    uint public pricePerToken;
+    Token public token;
+    mapping (address => uint256) contributions;
+    uint amountRaised;
+    bool fundingGoalReached = false;
+    bool crowdsaleClosed = false;
+
+    modifier afterDeadline () {
+        require(now < deadline);
+        crowdsaleClosed = true;
+        _;
+    }
+
+    constructor (
+        address inputBeneficiary,
+        uint inputFG,
+        uint durationinMins,
+        uint etherCostPerToken,
+        address tokenAddress){
+
+            beneficiary = inputBeneficiary;
+            fundingGoal = inputFG * 1 ether;
+            deadline = now + (durationinMins * 1 minutes);
+            pricePerToken = etherCostPerToken * 1 ether;
+            token = Token(tokenAddress);
+    }
+
+    function () {
+
+    }
+
+    function participate ( ) payable {
+        if (crowdsaleClosed == true) {
+            throw;
+        }
+        amountRaised += msg.value;
+        contributions[msg.sender] += msg.value;
+
+        token.mint(msg.sender, msg.value/pricePerToken);
+    }
+
+    function checkGoalReached () afterDeadline public{
+        crowdsaleClosed = true;
+        if (amountRaised > fundingGoal) {
+            fundingGoalReached = true;
+        }
+    }
+
+    function withdraws () afterDeadline payable returns (uint){
+        require(crowdsaleClosed == true);
+        if (fundingGoalReached == false){
+            return contributions[msg.sender];
+
+                if(contributions[msg.sender] > 0){
+                    msg.sender.transfer(contributions[msg.sender]);
+                    contributions[msg.sender] = 0;
+                }
+        }
+    }
+}
