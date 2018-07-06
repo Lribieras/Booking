@@ -1,0 +1,53 @@
+pragma solidity ^0.4.4;
+
+contract BikeContract{
+    status public BikeStatus;
+    mapping(address => uint) amount;
+    address[] public rider;
+
+    enum status {
+        available,
+        occupied,
+        broken,
+        repaired
+    }
+
+    constructor() public {
+        BikeStatus = status.available;
+        rider = new address[](0);
+    }
+
+    function ChangeStatus(status newStatus) payable public {
+    if (BikeStatus == status.broken) {
+        require (newStatus == status.repaired);
+    }
+    BikeStatus = newStatus;
+    if (newStatus == status.occupied) {
+        rider.push(msg.sender);
+    }
+    }
+
+}
+
+contract PrivateBike is BikeContract{
+    address public owner;
+
+    constructor() public {
+        owner = msg.sender;
+    }
+
+    function transferOwnership(address newOwner) payable public{
+        require (owner == msg.sender);
+        owner = newOwner;
+    }
+
+    function ChangeStatus(status newStatus) payable public {
+        require(owner == msg.sender);
+        BikeContract.ChangeStatus(newStatus);
+    }
+
+
+
+
+
+}
