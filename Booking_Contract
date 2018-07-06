@@ -1,0 +1,112 @@
+pragma solidity ^0.4.4;
+
+contract OwnedContract {
+    address public owner;
+    address public cleaner;
+
+    constructor() public {
+        owner = msg.sender;
+    }
+
+    modifier onlyOwner {
+        require(msg.sender == owner);
+        _;
+    }
+
+    modifier onlyCleaner{
+        _;
+        require(msg.sender == cleaner);
+    }
+
+    function transferOwnership(address newOwner) onlyOwner public {
+        owner = newOwner;
+    }
+}
+
+contract BookingContract is OwnedContract {
+    string public HotelName;
+    string public Location;
+    uint public numRooms;
+    status public RoomStatus;
+
+    enum status {
+        available,
+        occupied,
+        dirty,
+        clean
+    }
+
+    struct Room {
+        uint capacity;
+        uint numOccupants;
+        bool occupied;
+        status condition;
+        address occupier;
+    }
+
+    //Public so that people can see which rooms are available without seeing identities
+    Room[] public rooms;
+
+    constructor() public {
+        HotelName = "The Louis";
+        Location = "Montreal";
+        numRooms = 0;
+
+    }
+
+    function addRoom (uint roomCapacity) onlyOwner payable public {
+        numRooms += 1;
+        rooms.push(Room({
+            capacity: roomCapacity,
+            numOccupants: 0,
+            occupied: false,
+            condition: status.available,
+            occupier: 0
+        }));
+    }
+
+    function checkin (address occupant, uint roomNumber) payable public {
+        Room storage currentRoom = rooms[roomNumber];
+        currentRoom.occupier = occupant;
+        ChangeRoomOccupancyStatus(status.available, roomNumber);
+    }
+
+    function ChangeRoomOccupancyStatus (status occupancyStatus, uint roomNumber) public {
+        Room storage currentRoom = rooms[roomNumber];
+        if (currentRoom.condition == status.occupied) {
+            require (occupancyStatus == status.available);
+            currentRoom.numOccupants = 0;
+            currentRoom.occupied = false;
+        }
+        else {
+            require (occupancyStatus == status.occupied);
+            currentRoom.numOccupants = currentRoom.capacity;
+            currentRoom.occupied = true;
+        }
+        currentRoom.condition = occupancyStatus;
+    }
+}
+
+contract Hostel is BookingContract {
+
+    function ChangeRoomOccupancyStatus (status occupancyStatus, uint roomNumber) public {
+        Room storage currentRoom = rooms[roomNumber];
+        if (currentRoom.condition == status.occupied) {
+            require (occupancyStatus == status.available);
+        }
+        else {
+            require (occupancyStatus == status.occupied);
+            currentRoom.occupied = true;
+        }
+        currentRoom.condition = occupancyStatus;
+    }
+
+    function addOccupantToRoom (uint roomNumber) public {
+        Room storage currentRoom =rooms[roomNumber];
+        require (currentRoom.numOccupants < currentRoom.capacity);
+        if (currentRoom.numOccupants == 0) {
+            ChangeRoomOccupancyStatus (status.occupied, roomNumber);
+        }
+        currentRoom.numOccupants += 1;
+    }
+}
