@@ -1,0 +1,76 @@
+pragma solidity ^0.4.4;
+
+contract Token {
+    string public TokenName = "myToken";
+    uint Supply;
+    mapping(address => uint) balances;
+    address owner;
+
+    function Token (uint initialSupply) {
+        Supply = initialSupply;
+        owner = msg.sender;
+        balances[owner] = Supply;
+    }
+
+    function Transfer(address to, uint amount) {
+        if (balances[msg.sender] > amount) {
+            balances[msg.sender] -= amount;
+            balances[to] += amount;
+        }
+    }
+
+    function getBalance(address actualAddress) view returns (uint) {
+        return balances[actualAddress];
+    }
+
+
+}
+
+contract LikeableSmartContract{
+    string public LikeableSmartContractName;
+    mapping(address => uint) likes;
+
+
+    function LikeableSmartContract(string iname){
+        LikeableSmartContractName = iname;
+    }
+
+    function like() {
+        likes[msg.sender] ++;
+    }
+
+    function getLikes(address input) view returns(uint){
+        return likes[input];
+    }
+
+}
+
+
+
+contract Coin is Token, LikeableSmartContract {
+    string public CoinName;
+    uint public iSupply = 22;
+
+    function getiSupply() view returns (uint){
+        return iSupply;
+    }
+
+    function Coin (string coinName, uint initialSupply) Token (initialSupply) LikeableSmartContract (CoinName) {
+        CoinName = coinName;
+        //Token(20000);
+    }
+
+    function mintCoin(uint amountToMint) {
+        require ((10 < amountToMint) && (100 > amountToMint));
+
+        if (Supply < 10000){
+            revert("error message");
+        }
+
+        balances[msg.sender] += amountToMint;
+        Supply += amountToMint;
+
+        assert(Supply < amountToMint);
+    }
+
+}
